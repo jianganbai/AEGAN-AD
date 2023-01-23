@@ -1,0 +1,8 @@
+tqdm
+scipy
+numpy
+pytorch
+scikit-learn
+argparse
+librosa
+logging
