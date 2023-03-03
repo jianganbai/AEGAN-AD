@@ -1,0 +1,45 @@
+dataset_dir: /home/public/dcase/dcase20
+model_dir: ./model
+spec_dir: ../../spec
+log_dir: ./log
+
+mt:
+  train: ['pump']
+  test: ['pump']
+
+train_set: 'deval'  # 'dev', 'eval', 'deval'
+
+feat:
+  spec: 'mel'
+  fft_num: 2048
+  mel_bin: 128
+  frame_hop: 512
+  frame_num: 128
+
+net:
+  act: ['leakyrelu', 'relu']  # Encoder, Decoder
+  normalize: {'d':'ln', 'g': 'ln'}
+  nz: 256
+  ndf: 32
+  ngf: 32
+  isize: 128
+
+train:
+  lrD: 0.0002
+  lrG: 0.0002
+  beta1: 0.5
+  epoch: 50
+  bs: 512
+  wgan:
+    feat_match_eff: 1
+    match_item: {'mu': 1, 'sigma': 1}  # 'mu': 1, 'sigma': 1
+    ncritic: 1
+    lambda_gp: 10  # for gradient penalty
+
+detect:
+  p: 0.1
+
+repre:
+  normal: 0
+  anomaly: 1
+

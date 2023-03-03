@@ -1,4 +1,5 @@
-pretrain/*.pth
+dcase20/pretrain/*.pth
+dcase22/pretrain/*.pth
 
 
 # Byte-compiled / optimized / DLL files

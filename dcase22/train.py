@@ -23,19 +23,6 @@ with open('config.yaml') as fp:
     param = yaml.safe_load(fp)
 
 
-class ReconLoss(torch.nn.Module):
-    def __init__(self, loss_type):
-        super(ReconLoss, self).__init__()
-        self.MSE = torch.nn.MSELoss()
-        self.loss_type = loss_type
-
-    def forward(self, recon, mel):
-        if self.loss_type == 'l1':
-            return F.l1_loss(recon, mel)
-        elif self.loss_type == 'l2':
-            return F.mse_loss(recon, mel)
-
-
 class D2GLoss(torch.nn.Module):
     '''
         Feature matching loss described in the paper.
@@ -90,16 +77,10 @@ def compute_gradient_penalty(D, real_samples, fake_samples, device):
 def train_one_epoch(netD, netG, train_loader, optimD, optimG, device, d2g_eff):
     netD.train()
     netG.train()
-    aver_loss = {'recon': 0, 'd2g': 0}
-    recon_num, d2g_num = 0, 0
+    aver_loss, gloss_num = {'recon': 0, 'd2g': 0, 'gloss': 0}, 0
     lambda_gp = param['train']['wgan']['lambda_gp']
-    recon_loss = ReconLoss(param['train']['recon_loss'])
+    MSE = torch.nn.MSELoss()
     d2g_loss = D2GLoss(param['train']['wgan']['match_item'])
-    gl_comb = param['train']['wgan']['comb']
-    if gl_comb == 'cross':  # iterate between wgan-gp and reconstruction loss
-        gl_T, gl_iter = param['train']['wgan']['comb_cfg']['cross'], 0
-    elif gl_comb == 'mix':  # add wgan-gp and recon loss together
-        aver_loss['gloss'], gloss_num = 0, 0
 
     for i, (mel, _, _) in enumerate(train_loader):
         mel = mel.to(device)
@@ -114,46 +95,24 @@ def train_one_epoch(netD, netG, train_loader, optimD, optimG, device, d2g_eff):
 
         if i % param['train']['wgan']['ncritic'] == 0:
             recon = netG(mel)
-            if gl_comb == 'cross':
-                if gl_iter % gl_T == 0:  # recon loss
-                    g_loss = recon_loss(recon, mel)
-                    optimG.zero_grad()
-                    g_loss.backward()
-                    optimG.step()
-                    aver_loss['recon'] += g_loss.item()
-                    recon_num += 1
-                else:  # wgan-gp
-                    _, feat_real = netD(mel)
-                    pred_fake, feat_fake = netD(recon)
-                    g_loss = d2g_loss(pred_fake, feat_fake, feat_real)
-                    optimG.zero_grad()
-                    g_loss.backward()
-                    optimG.step()
-                    aver_loss['d2g'] += g_loss.item()
-                    d2g_num += 1
-                gl_iter += 1
-            elif gl_comb == 'mix':
-                _, feat_real = netD(mel)
-                pred_fake, feat_fake = netD(recon)
-                reconl = recon_loss(recon, mel)
-                d2gl = d2g_loss(feat_fake, feat_real)
-                g_loss = reconl + d2g_eff * d2gl
-                optimG.zero_grad()
-                g_loss.backward()
-                optimG.step()
+            _, feat_real = netD(mel)
+            _, feat_fake = netD(recon)
+            reconl = MSE(recon, mel)
+            d2gl = d2g_loss(feat_fake, feat_real)
+            g_loss = reconl + d2g_eff * d2gl
+            optimG.zero_grad()
+            g_loss.backward()
+            optimG.step()
 
-                aver_loss['recon'] += reconl.item()
-                aver_loss['d2g'] += d2gl.item()
-                aver_loss['gloss'] += g_loss.item()
-                recon_num, d2g_num, gloss_num = recon_num + 1, d2g_num + 1, gloss_num + 1
+            aver_loss['recon'] += reconl.item()
+            aver_loss['d2g'] += d2gl.item()
+            aver_loss['gloss'] += g_loss.item()
+            gloss_num = gloss_num + 1
 
-    aver_loss['recon'] /= recon_num
-    aver_loss['d2g'] /= d2g_num
-    if gl_comb == 'cross':
-        aver_loss['gloss'] = 'None'
-    elif gl_comb == 'mix':
-        aver_loss['gloss'] /= gloss_num
-        aver_loss['gloss'] = f"{aver_loss['gloss']:.4e}"
+    aver_loss['recon'] /= gloss_num
+    aver_loss['d2g'] /= gloss_num
+    aver_loss['gloss'] /= gloss_num
+    aver_loss['gloss'] = f"{aver_loss['gloss']:.4e}"
     return netD, netG, aver_loss
 
 
@@ -181,8 +140,7 @@ def train(netD, netG, train_loader, test_loader, optimD, optimG, logger, device,
     if best_hmean is not None:
         bestD = copy.deepcopy(netD.state_dict())
         bestG = copy.deepcopy(netG.state_dict())
-    if param['train']['wgan']['comb'] == 'mix':
-        d2g_eff = param['train']['wgan']['comb_cfg']['mix']
+    d2g_eff = param['train']['wgan']['feat_match_eff']
     logger.info("============== MODEL TRAINING ==============")
 
     for i in range(param['train']['epoch']):
@@ -217,14 +175,10 @@ def test(netD, netG, test_loader, train_embs, logger, device):
     G_metric = ['G_x_2_sum', 'G_x_2_min', 'G_x_2_max', 'G_x_1_sum', 'G_x_1_min', 'G_x_1_max',
                 'G_z_2_sum', 'G_z_2_min', 'G_z_2_max', 'G_z_1_sum', 'G_z_1_min', 'G_z_1_max',
                 'G_z_cos_sum', 'G_z_cos_min', 'G_z_cos_max']
-    all_metric = []
-    if param['detect']['D']['utilize']:
-        all_metric += D_metric
-        edetect = EDIS.EmbeddingDetector(train_embs)
-        edfunc = {'maha': edetect.maha_score, 'knn': edetect.knn_score,
-                  'lof': edetect.lof_score, 'cos': edetect.cos_score}
-    if param['detect']['G']['utilize']:
-        all_metric += G_metric
+    all_metric = D_metric + G_metric
+    edetect = EDIS.EmbeddingDetector(train_embs)
+    edfunc = {'maha': edetect.maha_score, 'knn': edetect.knn_score,
+              'lof': edetect.lof_score, 'cos': edetect.cos_score}
     metric2id = {m: mid for m, mid in zip(all_metric, range(len(all_metric)))}
     id2metric = {v: k for k, v in metric2id.items()}
 
@@ -242,7 +196,7 @@ def test(netD, netG, test_loader, train_embs, logger, device):
     # {sec: {'source': [], 'target': []}}
     y_true_all, y_score_all = [{} for _ in metric2id.keys()], [{} for _ in metric2id.keys()]
     with torch.no_grad():
-        for mel, attri, label in test_loader:  # mel: 1*192*1*128*128
+        for mel, attri, label in test_loader:  # mel: 1*186*1*128*128
             mel = mel.squeeze(0).to(device)
             _, feat_t = netD(mel)
             recon = netG(mel)
@@ -298,15 +252,6 @@ def test(netD, netG, test_loader, train_embs, logger, device):
     best_metric = id2metric[best_idx]
 
     logger.info('-' * 110)
-    if param['detect']['D']['utilize'] and param['detect']['D']['display']:
-        for i in range(len(D_metric)):
-            logger.info('===> {}: [AUC_s: {:.4f}] [AUC_t: {:.4f}] [pAUC: {:.4f}] [hmean: {:.4f}]'.format(
-                id2metric[i], hmean_all[i, 0], hmean_all[i, 1], hmean_all[i, 2], hmean_all[i, 3]))
-    if param['detect']['G']['utilize'] and param['detect']['G']['display']:
-        for i in range(len(D_metric), hmean_all.shape[0]):
-            logger.info('===> {}: [AUC_s: {:.4f}] [AUC_t: {:.4f}] [pAUC: {:.4f}] [hmean: {:.4f}]'.format(
-                id2metric[i], hmean_all[i, 0], hmean_all[i, 1], hmean_all[i, 2], hmean_all[i, 3]))
-
     return hmean_all[best_idx, :], best_metric
 
 
@@ -319,7 +264,7 @@ def main(logger):
                               batch_size=param['train']['batch_size'],
                               shuffle=True,
                               drop_last=True,
-                              num_workers=param['train']['num_workers'])
+                              num_workers=0)
     test_loader = {}
     dev_test_set = test_dataset(param, 'dev', 'test')
     test_loader['dev_test'] = DataLoader(dev_test_set,
@@ -343,11 +288,11 @@ def main(logger):
     netD.to(device)
     netG.to(device)
     optimD = torch.optim.Adam(netD.parameters(),
-                              lr=param['train']['mtsp'][param['mt']]['lrD'],
-                              betas=(param['train']['mtsp'][param['mt']]['beta1'], 0.999))
+                              lr=param['train']['lrD'],
+                              betas=(param['train']['beta1'], 0.999))
     optimG = torch.optim.Adam(netG.parameters(),
-                              lr=param['train']['mtsp'][param['mt']]['lrG'],
-                              betas=(param['train']['mtsp'][param['mt']]['beta1'], 0.999))
+                              lr=param['train']['lrG'],
+                              betas=(param['train']['beta1'], 0.999))
 
     train(netD, netG, train_loader, test_loader, optimD, optimG, logger, device, best_hmean)
 
@@ -364,17 +309,11 @@ if __name__ == '__main__':
 
     # trivial settings
     utils.set_seed(opt.seed)
-    if param['feat']['db_refer'] == 'max':
-        param['feat']['db_refer'] = np.max
-    elif param['feat']['db_refer'] == '1':
-        param['feat']['db_refer'] = 1
-    else:
-        raise Exception('Unknown db_refer')
     param['card_id'] = opt.card_id
     param['mt'] = opt.mt
     param['model_pth'] = utils.get_model_pth(param)
     param['resume'] = opt.resume
-    for dir in [param['model_dir'], param['detect_dir'], param['result_dir'], param['spec_dir'], param['log_dir']]:
+    for dir in [param['model_dir'], param['spec_dir'], param['log_dir']]:
         os.makedirs(dir, exist_ok=True)
 
     # set logger

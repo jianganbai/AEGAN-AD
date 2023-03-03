@@ -41,11 +41,9 @@ class train_dataset(Dataset):
                                                  fft_num=param['feat']['fft_num'],
                                                  mel_bin=param['feat']['mel_bin'],
                                                  frame_hop=param['feat']['frame_hop'],
-                                                 transform=param['feat']['transform'],
                                                  top_dir=param['spec_dir'],
                                                  mt=param['mt'],
                                                  data_type='train',
-                                                 db_refer=param['feat']['db_refer'],
                                                  setn=param['train_set'])
 
         gn = (self.all_clip_spec.shape[-1] - param['feat']['frame_num'] + 1)
@@ -116,11 +114,9 @@ class test_dataset(Dataset):
                                                  fft_num=param['feat']['fft_num'],
                                                  mel_bin=param['feat']['mel_bin'],
                                                  frame_hop=param['feat']['frame_hop'],
-                                                 transform=param['feat']['transform'],
                                                  top_dir=param['spec_dir'],
                                                  mt=param['mt'],
                                                  data_type=data_type,
-                                                 db_refer=param['feat']['db_refer'],
                                                  setn=param['train_set'],
                                                  rescale_ctl=False)
 

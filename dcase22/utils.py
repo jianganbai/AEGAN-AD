@@ -20,23 +20,22 @@ def get_clip_addr(clip_dir, ext='wav'):
     return clip_addr
 
 
-def generate_spec(clip_addr, fft_num, mel_bin, frame_hop, transform,
-                  top_dir, mt, data_type, db_refer, setn, rescale_ctl=True):
-    refer_note = 1 if db_refer == 1 else 'max'
+def generate_spec(clip_addr, fft_num, mel_bin, frame_hop, top_dir,
+                  mt, data_type, setn, rescale_ctl=True):
     all_clip_spec = None
 
     for set_type in clip_addr.keys():  # 'dev', 'eval'
         save_dir = os.path.join(top_dir, set_type, mt)
         os.makedirs(save_dir, exist_ok=True)
         raw_data_file = os.path.join(save_dir,
-                                     f'{data_type}_raw_mel_{mel_bin}_{fft_num}_{frame_hop}_{refer_note}.npy')
+                                     f'{data_type}_raw_mel_{mel_bin}_{fft_num}_{frame_hop}_1.npy')
 
         if not os.path.exists(raw_data_file):
             for idx in tqdm(range(len(clip_addr[set_type]))):
                 clip, sr = librosa.load(clip_addr[set_type][idx], sr=None, mono=True)
                 mel = librosa.feature.melspectrogram(y=clip, sr=sr, n_fft=fft_num,
                                                      hop_length=frame_hop, n_mels=mel_bin)
-                mel_db = librosa.power_to_db(mel, ref=db_refer)  # log-mel, (128, 313)
+                mel_db = librosa.power_to_db(mel, ref=1)  # log-mel, (128, 313)
 
                 if idx == 0:
                     set_clip_spec = np.zeros((len(clip_addr[set_type]) * mel_bin, mel.shape[1]), dtype=np.float32)
@@ -50,23 +49,21 @@ def generate_spec(clip_addr, fft_num, mel_bin, frame_hop, transform,
             all_clip_spec = np.vstack((all_clip_spec, set_clip_spec))
 
     frame_num_per_clip = all_clip_spec.shape[-1]
-    if transform:
-        if transform['scale_to_1']:  # scale the amplitude to [-1, 1]
-            save_dir = os.path.join(top_dir, setn, mt)
-            os.makedirs(save_dir, exist_ok=True)
-            scale_data_file = os.path.join(save_dir,
-                                           f'train_scale_mel_{mel_bin}_{fft_num}_{frame_hop}_{refer_note}.npy')
-            if data_type == 'train' and rescale_ctl:
-                max_v = np.max(all_clip_spec)
-                min_v = np.min(all_clip_spec)
-                np.save(scale_data_file, [max_v, min_v])
-            else:
-                maxmin = np.load(scale_data_file)
-                max_v, min_v = maxmin[0], maxmin[1]
+    save_dir = os.path.join(top_dir, setn, mt)
+    os.makedirs(save_dir, exist_ok=True)
+    scale_data_file = os.path.join(save_dir,
+                                   f'train_scale_mel_{mel_bin}_{fft_num}_{frame_hop}_1.npy')
+    if data_type == 'train' and rescale_ctl:  # scale to [-1,1]
+        max_v = np.max(all_clip_spec)
+        min_v = np.min(all_clip_spec)
+        np.save(scale_data_file, [max_v, min_v])
+    else:
+        maxmin = np.load(scale_data_file)
+        max_v, min_v = maxmin[0], maxmin[1]
 
-            mean = (max_v + min_v) / 2
-            scale = (max_v - min_v) / 2
-            all_clip_spec = (all_clip_spec - mean) / scale
+    mean = (max_v + min_v) / 2
+    scale = (max_v - min_v) / 2
+    all_clip_spec = (all_clip_spec - mean) / scale
 
     all_clip_spec = all_clip_spec.reshape(-1, mel_bin, frame_num_per_clip)
     return all_clip_spec
@@ -153,21 +150,18 @@ def config_summary(param):
     summary['feat'] = {'fft_num': param['feat']['fft_num'],
                        'mel_bin': param['feat']['mel_bin'],
                        'frame_hop': param['feat']['frame_hop'],
-                       'graph_hop_f': param['feat']['graph_hop_f'],
-                       'transform': param['feat']['transform']}
+                       'graph_hop_f': param['feat']['graph_hop_f']}
     summary['set'] = {'dataset': param['train_set']}
     summary['net'] = {'act': param['net']['act'],
                       'normalize': param['net']['normalize'],
                       'nz': param['net']['nz'],
                       'ndf': param['net']['ndf'],
                       'ngf': param['net']['ngf']}
-    summary['train'] = {'mtsp': param['train']['mtsp'][param['mt']],
+    summary['train'] = {'lrD': param['train']['lrD'],
+                        'lrG': param['train']['lrG'],
                         'batch_size': param['train']['batch_size'],
-                        'epoch': param['train']['epoch'],
-                        'recon': param['train']['recon_loss']}
+                        'epoch': param['train']['epoch']}
     summary['wgan'] = param['train']['wgan']
-    summary['detect'] = {'D': param['detect']['D'],
-                         'G': param['detect']['G']}
     return summary
 
 

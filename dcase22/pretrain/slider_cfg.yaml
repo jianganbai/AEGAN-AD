@@ -1,0 +1,45 @@
+dataset_dir: /home/public/dcase/dcase22
+model_dir: ./model
+detect_dir: ./detect
+result_dir: ./result
+spec_dir: ../../spec
+log_dir: ./log
+
+feat:
+  fft_num: 2048
+  mel_bin: 128
+  frame_hop: 512
+  frame_num: 128
+  graph_hop_f: 1
+
+net:
+  act: ['leakyrelu', 'relu']  # Encoder, Decoder
+  normalize: {'d':'ln', 'g': 'ln'}
+  nz: 256
+  ndf: 32
+  ngf: 32
+  isize: 128
+
+train_set: 'dev'  # 'dev', 'eval', 'deval'
+
+train:
+  lrD: 0.0002
+  lrG: 0.0002
+  beta1: 0.5
+  epoch: 60
+  batch_size: 512
+  wgan:
+    feat_match_eff: 0.1
+    match_item: {'mu': 1}  # 'mu': 1, 'sigma': 1
+    ncritic: 1
+    lambda_gp: 10  # for gradient penalty
+
+detect:
+  p: 0.1
+
+repre:
+  normal: 0
+  anomaly: 1
+  source: 0
+  target: 1
+

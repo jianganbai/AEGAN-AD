@@ -39,7 +39,7 @@ def get_d_aver_emb(netD, train_set, device):
 
 
 # @profile
-def test(netD, netG, test_loader, file_list, train_embs,
+def test(netD, netG, te_ld, file_list, train_embs,
          set_sec, device, data_type, score_metric=None, cal_auc=True):
     # detect_domain, score_type, score_comb= ('x', 'z'), ('2', '1'), ('sum', 'min', 'max')
     D_metric = ['D_maha', 'D_knn', 'D_lof', 'D_cos']
@@ -68,7 +68,7 @@ def test(netD, netG, test_loader, file_list, train_embs,
     file_sec_list, score_sec_list = [{} for _ in metric2id.keys()], [{} for _ in metric2id.keys()]  # for recording score
     with torch.no_grad():
         with tqdm(total=len(file_list)) as pbar:
-            for (mel, attri, label), file in zip(test_loader, file_list):  # mel: 1*?*1*128*128
+            for (mel, attri, label), file in zip(te_ld, file_list):  # mel: 1*?*1*128*128
                 mel = mel.squeeze(0).to(device)
                 attri = attri.squeeze(0)
                 _, feat_t = netD(mel)
@@ -98,7 +98,7 @@ def test(netD, netG, test_loader, file_list, train_embs,
                                 dname = metric.split('_')[1]
                                 score = edfunc[dname](feat_t, sec)
                             if wn == 'G':
-                                dd, st, sc = dd, st, sc = tuple(metric.split('_')[1:])
+                                dd, st, sc = tuple(metric.split('_')[1:])
                                 ori = mel if dd == 'x' else melz
                                 hat = recon if dd == 'x' else reconz
                                 score = scfunc[sc](specfunc(stfunc[st](hat, ori)))
@@ -174,7 +174,6 @@ def test(netD, netG, test_loader, file_list, train_embs,
 
 def main():
     print('========= Test Machine Type: {} ========='.format(param['mt']))
-    test_loader, test_file_list = {}, {}
 
     param['all_sec'] = []
     if 'dev' in param['train_set']:
@@ -182,19 +181,11 @@ def main():
     if 'eval' in param['train_set']:
         param['all_sec'] += [3, 4, 5]
     dev_test_data = test_dataset(param, 'dev', 'test')
-    test_file_list['dev'] = dev_test_data.get_clip_name()
-    test_loader['dev'] = DataLoader(dev_test_data,
-                                    batch_size=1,
-                                    shuffle=False,
-                                    num_workers=0)
-
-    if param['eval']:
-        eval_test_data = test_dataset(param, 'eval', 'test')
-        test_file_list['eval'] = eval_test_data.get_clip_name()
-        test_loader['eval'] = DataLoader(eval_test_data,
-                                         batch_size=1,
-                                         shuffle=False,
-                                         num_workers=0)
+    test_file_list = dev_test_data.get_clip_name()
+    te_ld = DataLoader(dev_test_data,
+                       batch_size=1,
+                       shuffle=False,
+                       num_workers=0)
 
     device = torch.device('cuda:{}'.format(param['card_id']))
     netD = Discriminator(param)
@@ -208,47 +199,22 @@ def main():
 
     print(f"=> Recorded best hmean: {pth_file['best_hmean']:.4}")
     print('=> Detection on dev test set')
-    best_metric, best_hmean = test(netD, netG, test_loader['dev'], test_file_list['dev'], train_embs,
+    best_metric, best_hmean = test(netD, netG, te_ld, test_file_list, train_embs,
                                    [0, 1, 2], device, 'test', score_metric=None, cal_auc=True)
     print(f'=> Best metric: {best_metric}; Best hmean: {best_hmean:.4}')
-
-    if param['eval']:
-        print('=> Detection on eval test set')
-        test(netD, netG, test_loader['eval'], test_file_list['eval'], train_embs,
-             [3, 4, 5], device, 'test', score_metric=best_metric, cal_auc=False)
 
 
 if __name__ == '__main__':
     mt_list = ['bearing', 'fan', 'gearbox', 'slider', 'ToyCar', 'ToyTrain', 'valve']
-    bm_list = ['D_maha', 'D_knn', 'D_lof', 'D_cos',
-               'G_x_2_sum', 'G_x_2_min', 'G_x_2_max', 'G_x_1_sum', 'G_x_1_min', 'G_x_1_max',
-               'G_z_2_sum', 'G_z_2_min', 'G_z_2_max', 'G_z_1_sum', 'G_z_1_min', 'G_z_1_max',
-               'G_z_cos_sum', 'G_z_cos_min', 'G_z_cos_max']
     card_num = torch.cuda.device_count()
     parser = argparse.ArgumentParser()
-    parser.add_argument('-d', '--dev', action='store_true', default=True)  # test on dev
-    parser.add_argument('-e', '--eval', action='store_true', default=False)  # test on eval
     parser.add_argument('--mt', choices=mt_list, default='ToyCar')
     parser.add_argument('-c', '--card_id', type=int, choices=list(range(card_num)), default=7)
     opt = parser.parse_args()
 
-    if param['feat']['db_refer'] == 'max':
-        param['feat']['db_refer'] = np.max
-    elif param['feat']['db_refer'] == '1':
-        param['feat']['db_refer'] = 1
-    else:
-        raise Exception('Unknown db_refer')
-
-    param['dev'] = opt.dev
-    param['eval'] = opt.eval
     param['card_id'] = opt.card_id
     param['mt'] = opt.mt
     param['model_pth'] = utils.get_model_pth(param)
-    # param['model_pth'] = './pretrain/bearing_7603.pth'
-    # param['model_pth'] = './pretrain/fan_6583.pth'
-    # param['model_pth'] = './pretrain/gearbox_7527.pth'
-    # param['model_pth'] = './pretrain/slider_7406.pth'
-    # param['model_pth'] = './pretrain/ToyCar_7846.pth'
 
     for dir in [param['model_dir'], param['detect_dir'], param['result_dir']]:
         os.makedirs(dir, exist_ok=True)
