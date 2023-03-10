@@ -9,6 +9,30 @@ Automatic detection of machine anomaly remains challenging for machine learning.
 
 
 
+Let $\mathbb{P}_r$ and $\mathbb{P}_g$ denote the real distribution and the generated distribution respectively. The discriminator is trained to minimize the following function:
+
+$$\mathcal{L}_D=\mathop{\mathbb{E}}\limits_{\tilde{x}\sim{\mathbb{P}_g}}\left[D(\tilde{x})\right]-\mathop{\mathbb{E}}\limits_{x\sim\mathbb{P}_r}\left[D(x)\right]+{\lambda}\mathop{E}_{\hat{x}\sim\mathbb{P}_{\hat{x}}}\left[\left(\Vert\nabla_{\hat{x}}D(\hat{x})\Vert_2-1\right)^2\right]$$
+
+where $\lambda$ is weight of gradient penalty. $\mathbb{P}_{\hat{x}}$ is a distribution of samples with the following linear combination of that drawn from $\mathbb{P}_r$ and $\mathbb{P}_g$:
+
+  $$\hat{x}=\alpha{\cdot}x+(1-\alpha){\cdot}{\tilde{x}}$$
+
+where $x{\sim}\mathbb{P}_r$ and $\tilde{x}{\sim}\mathbb{P}_g$. $\alpha$ is a randomly selected parameter.
+
+
+
+An alternative reconstruction-based loss function is adopted for the generator. Let $f(\cdot)$ denote the embedding of the discriminator. The loss function of the generator is formulated as follows:
+
+$$\mathcal{L}_G=\mathop{\mathbb{E}}\limits_{x{\sim}\mathbb{P}_r}\left[\Vert{x-G(x)}\Vert_2^2\right] +{\mu_1}{\Vert}\mathop{\mathbb{E}}\limits_{x{\sim}\mathbb{P}_r}\left[f(x)\right]-\mathop{\mathbb{E}}_{\tilde{x}\sim\mathbb{P}_g}\left[f(\tilde{x})\right]{\Vert}_2^2$$
+
+where the first term is the norm of the reconstruction error and the second term is the feature matching loss. A modified $\mathcal{L}_G$ is proposed for some machine types, which measures the feature matching loss via both mean and standard deviation:
+
+$$\mathcal{L}_G=\mathop{\mathbb{E}}\limits_{x{\sim}\mathbb{P}_r}\left[\Vert{x-G(x)}\Vert_2^2\right]+{\mu_1}{\Vert}\mathop{\mathbb{E}}\limits_{x{\sim}\mathbb{P}_r}\left[f(x)\right]-\mathop{\mathbb{E}}_{\tilde{x}\sim\mathbb{P}_g}\left[f(\tilde{x})\right]{\Vert}_2^2+{\mu_2}{\Vert}\mathop{\sigma}\limits_{x{\sim}\mathbb{P}_r}\left[f(x)\right]-\mathop{\sigma}_{\tilde{x}\sim\mathbb{P}_g}\left[f(\tilde{x})\right]{\Vert}_2^2$$
+
+where $\sigma[f(x)]$ is a vector, of which each element is the standard deviation of the corresponding dimension of the embedding.
+
+
+
 Experiments were conducted on DCASE 20 datset and DCASE 22 dataset. Code for each dataset can be found in the corresponding directory. Please refer to the corresponding instructions below. Two sets of code are mainly the same.
 
 ## DCASE 20
