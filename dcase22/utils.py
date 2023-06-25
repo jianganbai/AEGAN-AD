@@ -31,7 +31,7 @@ def generate_spec(clip_addr, fft_num, mel_bin, frame_hop, top_dir,
                                      f'{data_type}_raw_mel_{mel_bin}_{fft_num}_{frame_hop}_1.npy')
 
         if not os.path.exists(raw_data_file):
-            for idx in tqdm(range(len(clip_addr[set_type]))):
+            for idx in tqdm(range(len(clip_addr[set_type])), desc=f'{mt}-{setn}-{data_type}'):
                 clip, sr = librosa.load(clip_addr[set_type][idx], sr=None, mono=True)
                 mel = librosa.feature.melspectrogram(y=clip, sr=sr, n_fft=fft_num,
                                                      hop_length=frame_hop, n_mels=mel_bin)

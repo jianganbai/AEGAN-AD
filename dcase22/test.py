@@ -180,6 +180,7 @@ def main():
         param['all_sec'] += [0, 1, 2]
     if 'eval' in param['train_set']:
         param['all_sec'] += [3, 4, 5]
+    train_data = train_dataset(param)
     dev_test_data = test_dataset(param, 'dev', 'test')
     test_file_list = dev_test_data.get_clip_name()
     te_ld = DataLoader(dev_test_data,
@@ -195,7 +196,7 @@ def main():
     netG.load_state_dict(pth_file['netG'])
     netD.to(device)
     netG.to(device)
-    train_embs = get_d_aver_emb(netD, train_dataset(param), device)
+    train_embs = get_d_aver_emb(netD, train_data, device)
 
     print(f"=> Recorded best hmean: {pth_file['best_hmean']:.4}")
     print('=> Detection on dev test set')
