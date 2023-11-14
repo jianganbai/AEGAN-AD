@@ -15,6 +15,7 @@ feat:
   mel_bin: 128
   frame_hop: 512
   frame_num: 128
+  graph_hop_f: 1
 
 net:
   act: ['leakyrelu', 'relu']  # Encoder, Decoder
